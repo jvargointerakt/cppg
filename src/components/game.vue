@@ -15,7 +15,10 @@
         <div class="body-container">
           <div class="chart-container">
             <canvas class="chart-canvas" ref="chart"></canvas>
-            <p class="current-price-label" :style="`top: ${currentPricePosY}px;`">Hello</p>
+            <div class="current-price-label-wrapper" :style="`top: calc(${chartTop}px + ${verticalPos}px);`">
+              <div class="current-price-triangle"></div>
+              <p class="current-price-label">${{ lastPrice.toFixed(4) }}</p>
+            </div>
           </div>
           <div :class="config.code + '-panel-container'" style="position: relative">
             <div :class="config.code + '-inputs'">
@@ -27,19 +30,19 @@
                 <label class="inputs-title">Payout: {{ _payout }}</label>
               </div>
             </div>
-            <div :class="config.code + '-price-container'">
+            <div class="price-container">
               <div>
+                <span>Asset</span>
                 <span :class="config.code + '-symbol'">{{ this.asset.symbol }}</span>
-                <sup>$</sup>
               </div>
               <div>
-                <span>{{ _lastPriceIntegerPart }}</span>
-                <sup>{{ _lastPriceDecimalPart }}</sup>
+                <span>Price</span>
+                <span>${{ _lastPriceIntegerPart }}<sup>{{ _lastPriceDecimalPart }}</sup></span>
               </div>
             </div>
-            <div :class="config.code + '-trade-buttons'">
-              <button @click="trade(1)" :disabled="tradeIsOpen || !canTrade" :class="config.code + '-high'">{{ __('High') }}</button>
-              <button @click="trade(-1)" :disabled="tradeIsOpen || !canTrade" :class="config.code + '-low'">{{ __('Low') }}</button>
+            <div class="trade-buttons">
+              <button @click="trade(1)" :disabled="tradeIsOpen || !canTrade" class="trade-high">{{ __('High') }}</button>
+              <button @click="trade(-1)" :disabled="tradeIsOpen || !canTrade" class="trade-low">{{ __('Low') }}</button>
             </div>
             <div v-show="message" :class="config.code + '-message'">
               {{ message }}
@@ -47,7 +50,7 @@
             <div v-show="secondsToExpiry > 0" :class="config.code + '-progress-bar'">
               <div :style="{ width: secondsToExpiry / duration * 100 + '%' }"></div>
             </div>
-            <div :class="config.code + '-stats'">
+            <div class="stats">
               <div>
                 <span>{{ __('Balance') }}</span>
                 <span>{{ _balance }}</span>
@@ -100,7 +103,9 @@
                 userData: null,
                 timeout: null,
                 interval: null,
-                currentPricePosY: 0
+                currentPricePosY: 0,
+                chartTop: null,
+                chartBottom: null
             }
         },
         computed: {
@@ -163,6 +168,9 @@
             },
             canTrade() {
                 return !this.tradeIsOpen && this.stake >= 0 && this.userData.balance >= this.stake && this.lastPrice > 0;
+            },
+            verticalPos() {
+                return this.currentPricePosY
             }
         },
         methods: {
@@ -193,7 +201,8 @@
                         radius: 0,
                         hoverRadius: 5,
                         hitRadius: 0,
-                        pointRadius: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5]
+                        pointRadius: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4],
+                        keepTooltipOpen: true
                       }
                     ]
                 };
@@ -203,8 +212,7 @@
                     maintainAspectRatio: false,
                     layout: {
                       padding: {
-                        right: 100,
-                        bottom: 20
+                        right: 120
                       }
                     },
                     hover: {
@@ -214,16 +222,16 @@
                         enabled: true,
                         mode: 'index',
                         intersect: false, // display tooltip at all times
-                        cornerRadius: 3,
-                        titleFontColor: this.color,
+                        cornerRadius: 6,
+                        titleFontColor: '#fff',
                         bodyFontSize: 14,
                         displayColors: false,
-                        bodyFontColor: this.color,
-                        backgroundColor: '#fff',
+                        bodyFontColor: '#fff',
+                        backgroundColor: '#84929c',
                         borderColor: this.color,
-                        borderWidth: 1,
-                        xPadding: 10,
-                        yPadding: 10,
+                        borderWidth: 0,
+                        xPadding: 16,
+                        yPadding: 16,
                         bodySpacing: 5,
                         callbacks: {
                             label: (tooltipItem, data) => {
@@ -233,7 +241,7 @@
                     },
                     elements: {
                       line: {
-                        tension: 0.5
+                        tension: 0.4
                       },
                       point: {
                         radius: 3
@@ -243,8 +251,11 @@
                         display: false
                     },
                     animation: {
-                      duration: 400,
-                      easing: 'easeInOutSine'
+                      duration: 300,
+                      easing: 'easeInOutSine',
+                      onComplete: () => {
+                        // this.updateUI();
+                      }
                     },
                     scales: {
                         xAxes: [{
@@ -359,11 +370,16 @@
                 return this.config.text[string] || string;
             },
             updateUI() {
-              // console.log("updated", this.prices[this.prices.length - 1]);
-              let lastPointPosition = this.chart.getDatasetMeta(0).data[this.quotes.length - 1];
+              let data = this.chart.getDatasetMeta(0).data;
+              let lastPointPosition = data[data.length - 1];
               if (!lastPointPosition) return;
-              this.currentPricePosY = lastPointPosition._view.y;
-              console.log("point", lastPointPosition._view.y);
+              this.currentPricePosY = lastPointPosition._model.y;
+
+
+              let chartScale = this.chart.getDatasetMeta(0).dataset._scale;
+              if (!chartScale) return;
+              this.chartTop = chartScale.top;
+              this.chartBottom = chartScale.bottom;
             },
             incrementStake() {
               this.stake++;
@@ -445,7 +461,14 @@
 
 <style>
 
+  :root {
+    --paletteColor1: #71a3f5;
+    --paletteColor2: #d0e2ff;
+    --paletteNeutral1: #f0f0f0;
+    --paletteNeutral1Hover: #e4e4e4;
 
+    --borderNeutral: #dfdfdf;
+  }
 
   * {
     font-family: 'Avenir Next', sans-serif;
@@ -456,24 +479,50 @@
     appearance: none;
   }
 
-  .current-price-label {
+  .current-price-label-wrapper {
     position: absolute;
+    margin: 0;
+    padding: 0;
     right: 0;
-    z-index: 99999999999999;
+    z-index: 99999;
+    transition: all 0.3s;
+  }
+
+  .current-price-triangle {
+    position: absolute;
+    top: -0.5rem;
+    left: -17.5px;
+    height: 0;
+    width: 0;
+    border-top: 17.5px solid transparent;
+    border-bottom: 17.5px solid transparent;
+    border-right: 17.5px solid var(--paletteColor1);
+    z-index: 99999999;
+  }
+
+  .current-price-label {
+    position: relative;
+    margin: 0;
+    padding: 0;
+    top: -0.5rem;
+    font-size: 0.9rem;
+    padding: 0.5rem;
+    color: #fff;
+    background-color: var(--paletteColor1);
   }
 
 
   .cppg-container {
     display: flex;
     flex-direction: column;
-    border-bottom: 1px solid #dfdfdf;
+    border-bottom: 1px solid var(--borderNeutral);
   }
 
   .header-container {
     display: flex;
     justify-content: center;
     align-items: center;
-    background-color: #f1f5f7;
+    background-color: var(--paletteNeutral1);
   }
 
   .cppg-dropdowns {
@@ -483,7 +532,16 @@
 
   .dropdown-item {
     width: 200px;
-    margin: 1rem;
+    margin: 0.5rem;
+    padding: 0.75rem 1rem;
+    background-color: #fff;
+    border-radius: 0.5rem;
+  }
+
+  .dropdown-item label {
+    font-size: 0.8rem;
+    color: rgba(0,0,0,.5);
+    text-transform: uppercase;
   }
 
   .body-container {
@@ -492,9 +550,10 @@
   }
 
   .chart-container {
-    /* position: relative; */
+    position: relative;
     height: 420px;
-    border-right: 1px solid #dfdfdf;
+    padding: 1rem;
+    border-right: 1px solid var(--borderNeutral);
     flex: 2 2 0;
   }
 
@@ -523,7 +582,117 @@
   }
 
   .input-plus-minus {
-    height: 1.5rem;
+    padding: 0;
+    font-size: 1.25rem;
+    font-weight: 400;
+    color: rgba(0,0,0,.5);
+    border: 0;
+    background-color: var(--paletteNeutral1);
+    transition: all 0.3s;
+  }
+  .input-plus-minus:hover {
+    cursor: pointer;
+    color: rgba(0,0,0,.75);
+    background-color: var(--paletteNeutral1Hover);
+  }
+
+  .price-container {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+  }
+
+  .price-container div {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    padding: 1rem;
+  }
+
+  .price-container div:first-child {
+    flex: 0 0 0;
+    padding: 1rem 2rem;
+    background-color: var(--paletteNeutral1);
+  }
+
+  .price-container div span {
+    text-align: center;
+  }
+
+  .price-container div span:first-child {
+    margin-bottom: 0.25rem;
+    color: rgba(0,0,0,.5);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+  }
+
+  .trade-buttons {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .trade-buttons button {
+    width: 100%;
+    padding: 1rem;
+    border: 0;
+    color: #fff;
+    border-radius: 0.25rem;
+    outline: none !important;
+    transition: all 0.3s;
+  }
+
+  .trade-high {
+    margin-right: 0.5rem;
+    background-color: #4acd8a;
+  }
+  .trade-high:hover {
+    cursor: pointer;
+    background-color: #52e399;
+  }
+
+  .trade-low {
+    background-color: #c23232;
+  }
+  .trade-low:hover {
+    cursor: pointer;
+    background-color: #db4444;
+  }
+
+  .stats {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .stats div {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    border-radius: 0.25rem;
+    /* background-color: var(--paletteNeutral1); */
+  }
+
+  .stats div span:first-child {
+    margin-bottom: 0.25rem;
+    color: rgba(0,0,0,.5);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+  }
+
+  .stats div:first-child {
+    background-color: var(--paletteColor1);
+  }
+
+  .stats div:first-child span {
+    color: #fff;
   }
 
 </style>
